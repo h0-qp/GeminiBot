@@ -1,6 +1,5 @@
 import os
 import threading
-import asyncio
 from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.enums import ChatAction
@@ -41,7 +40,8 @@ async def start(client, message):
     chat_id = message.chat.id
     
     try:
-        user_sessions[chat_id] = gemini_client.chats.create(model="gemini-1.5-flash")
+        # استخدمنا aio.chats لسرعة الاستجابة
+        user_sessions[chat_id] = gemini_client.aio.chats.create(model="gemini-1.5-flash")
         
         text = (
             f"هلا بيك {message.from_user.first_name}! 👋\n\n"
@@ -51,8 +51,8 @@ async def start(client, message):
         )
         await message.reply_text(text)
     except Exception as e:
-        # صيد الخطأ عند البداية
-        await message.reply_text(f"⚠️ خطأ بالتشغيل:\n`{str(e)}`")
+        # لغينا الـ parse_mode حتى الخطأ ينطبع مهما كان شكله
+        await message.reply_text(f"⚠️ خطأ بالتشغيل:\n{str(e)}", parse_mode=None)
 
 @app.on_message(filters.text & filters.private & ~filters.command("start") & ~filters.me)
 async def handle_message(client, message):
@@ -60,9 +60,9 @@ async def handle_message(client, message):
     
     if chat_id not in user_sessions:
         try:
-            user_sessions[chat_id] = gemini_client.chats.create(model="gemini-1.5-flash")
+            user_sessions[chat_id] = gemini_client.aio.chats.create(model="gemini-1.5-flash")
         except Exception as e:
-            await message.reply_text(f"⚠️ خطأ بإنشاء الجلسة:\n`{str(e)}`")
+            await message.reply_text(f"⚠️ خطأ بإنشاء الجلسة:\n{str(e)}", parse_mode=None)
             return
             
     chat_session = user_sessions[chat_id]
@@ -71,11 +71,12 @@ async def handle_message(client, message):
     await client.send_chat_action(chat_id, ChatAction.TYPING)
     
     try:
-        response = await asyncio.to_thread(chat_session.send_message, message.text)
+        # استدعاء الرد بشكل مباشر وسريع جداً
+        response = await chat_session.send_message(message.text)
         await message.reply_text(response.text)
     except Exception as e:
-        # صيد الخطأ من سيرفرات جوجل وإرساله للتليجرام
-        await message.reply_text(f"⚠️ الخطأ من سيرفر جوجل هو:\n`{str(e)}`")
+        # طباعة الخطأ الصافي بدون تنسيق
+        await message.reply_text(f"⚠️ الخطأ من سيرفر جوجل هو:\n{str(e)}", parse_mode=None)
 
 if __name__ == "__main__":
     keep_alive() 
