@@ -4,7 +4,7 @@ import asyncio
 from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.enums import ChatAction
-from google import genai # المكتبة الجديدة
+from google import genai
 
 # --- إعداد السيرفر الوهمي (Flask) ---
 web_app = Flask(__name__)
@@ -29,18 +29,18 @@ bot_token = os.getenv("BOT_TOKEN")
 
 app = Client("gemini_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
-# إعدادات جيميناي (المكتبة الجديدة)
+# إعدادات جيميناي
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # قاموس لحفظ ذاكرة المحادثة لكل مستخدم
 user_sessions = {}
 
-@app.on_message(filters.command("start"))
+# ضفنا ~filters.me و filters.private
+@app.on_message(filters.command("start") & filters.private & ~filters.me)
 async def start(client, message):
     chat_id = message.chat.id
     
-    # بدء جلسة جديدة بالنظام الجديد
     try:
         user_sessions[chat_id] = gemini_client.chats.create(model="gemini-1.5-flash")
         
@@ -54,11 +54,11 @@ async def start(client, message):
     except Exception as e:
         print(f"Start Error: {e}")
 
-@app.on_message(filters.text & ~filters.command("start"))
+# ضفنا ~filters.me حتى يتجاهل رسائله، و filters.private
+@app.on_message(filters.text & filters.private & ~filters.command("start") & ~filters.me)
 async def handle_message(client, message):
     chat_id = message.chat.id
     
-    # التأكد من وجود جلسة
     if chat_id not in user_sessions:
         try:
             user_sessions[chat_id] = gemini_client.chats.create(model="gemini-1.5-flash")
@@ -72,7 +72,6 @@ async def handle_message(client, message):
     await client.send_chat_action(chat_id, ChatAction.TYPING)
     
     try:
-        # إرسال الرسالة وجلب الرد
         response = await asyncio.to_thread(chat_session.send_message, message.text)
         await message.reply_text(response.text)
     except Exception as e:
