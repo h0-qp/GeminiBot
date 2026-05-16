@@ -33,14 +33,14 @@ app = Client("gemini_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# قاموس لحفظ ذاكرة المحادثة لكل مستخدم (نظام الذاكرة اليدوي)
+# قاموس لحفظ ذاكرة المحادثة لكل مستخدم
 user_sessions = {}
 
 @app.on_message(filters.command("start") & filters.private & ~filters.me)
 async def start(client, message):
     chat_id = message.chat.id
     
-    # تصفير الذاكرة وبدء مصفوفة جديدة
+    # تصفير الذاكرة
     user_sessions[chat_id] = []
     
     text = (
@@ -55,38 +55,33 @@ async def start(client, message):
 async def handle_message(client, message):
     chat_id = message.chat.id
     
-    # استخراج النص الصافي
     user_text = message.text or message.caption
     if not user_text:
         return
     user_text = str(user_text).strip()
     
-    # إذا المستخدم ما دايس start، نفتحله ذاكرة جديدة
     if chat_id not in user_sessions:
         user_sessions[chat_id] = []
         
-    # 🔥 هنا السر: نضيف رسالتك للذاكرة بصيغة القاموس اللي يقبلها جوجل غصباً عنه
     user_sessions[chat_id].append({'role': 'user', 'parts': [{'text': user_text}]})
     
     await client.send_chat_action(chat_id, ChatAction.TYPING)
     
     try:
-        # نرسل الذاكرة كلها مباشرة للمحرك الأساسي بدون تعقيدات
+        # 🔥 هنا غيرنا الموديل إلى gemini-2.0-flash
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
-            model='gemini-1.5-flash',
+            model='gemini-2.0-flash', 
             contents=user_sessions[chat_id]
         )
         
         reply = response.text
         
-        # إذا رجع رد، نضيفه للذاكرة حتى البوت يتذكر السياق
         if reply:
             user_sessions[chat_id].append({'role': 'model', 'parts': [{'text': reply}]})
             await message.reply_text(reply)
             
     except Exception as e:
-        # إذا صار خطأ، نمسح آخر رسالة دزيتها حتى لا تتخربط الذاكرة
         if len(user_sessions[chat_id]) > 0:
             user_sessions[chat_id].pop()
         await message.reply_text(f"⚠️ خطأ بالاتصال:\n`{str(e)}`")
