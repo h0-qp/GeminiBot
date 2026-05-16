@@ -36,7 +36,6 @@ gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 # قاموس لحفظ ذاكرة المحادثة لكل مستخدم
 user_sessions = {}
 
-# ضفنا ~filters.me و filters.private
 @app.on_message(filters.command("start") & filters.private & ~filters.me)
 async def start(client, message):
     chat_id = message.chat.id
@@ -52,9 +51,9 @@ async def start(client, message):
         )
         await message.reply_text(text)
     except Exception as e:
-        print(f"Start Error: {e}")
+        # صيد الخطأ عند البداية
+        await message.reply_text(f"⚠️ خطأ بالتشغيل:\n`{str(e)}`")
 
-# ضفنا ~filters.me حتى يتجاهل رسائله، و filters.private
 @app.on_message(filters.text & filters.private & ~filters.command("start") & ~filters.me)
 async def handle_message(client, message):
     chat_id = message.chat.id
@@ -63,7 +62,7 @@ async def handle_message(client, message):
         try:
             user_sessions[chat_id] = gemini_client.chats.create(model="gemini-1.5-flash")
         except Exception as e:
-            print(f"Session Error: {e}")
+            await message.reply_text(f"⚠️ خطأ بإنشاء الجلسة:\n`{str(e)}`")
             return
             
     chat_session = user_sessions[chat_id]
@@ -75,8 +74,8 @@ async def handle_message(client, message):
         response = await asyncio.to_thread(chat_session.send_message, message.text)
         await message.reply_text(response.text)
     except Exception as e:
-        await message.reply_text("عذراً، صار عندي ضغط أو مشكلة بالاتصال. حاول تسألني مرة ثانية! 🔄")
-        print(f"API Error: {e}")
+        # صيد الخطأ من سيرفرات جوجل وإرساله للتليجرام
+        await message.reply_text(f"⚠️ الخطأ من سيرفر جوجل هو:\n`{str(e)}`")
 
 if __name__ == "__main__":
     keep_alive() 
