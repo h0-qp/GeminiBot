@@ -1,0 +1,81 @@
+import os
+import threading
+import asyncio
+from flask import Flask
+from pyrogram import Client, filters
+from pyrogram.enums import ChatAction
+import google.generativeai as genai
+
+# --- إعداد السيرفر الوهمي (Flask) لـ Back4App ---
+web_app = Flask(__name__)
+
+@web_app.route('/')
+def home():
+    return "Gemini Pyrogram Bot is Running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    web_app.run(host="0.0.0.0", port=port)
+
+def keep_alive():
+    t = threading.Thread(target=run_web)
+    t.start()
+# ----------------------------------------------
+
+# إعدادات Pyrogram
+api_id = 28222279  # استخدمت نفس الايدي مالتك
+api_hash = "bf76ce65a3af59f3565f63501800aa14"
+bot_token = os.getenv("BOT_TOKEN")
+
+app = Client("gemini_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
+
+# إعدادات جيميناي
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+# قاموس لحفظ ذاكرة المحادثة لكل مستخدم
+user_sessions = {}
+
+@app.on_message(filters.command("start"))
+async def start(client, message):
+    chat_id = message.chat.id
+    # تصفير الذاكرة وبدء جلسة جديدة لهذا المستخدم
+    user_sessions[chat_id] = model.start_chat(history=[])
+    
+    text = (
+        f"هلا بيك {message.from_user.first_name}! 👋\n\n"
+        "أنا بوت ذكاء اصطناعي مدعوم من Gemini. "
+        "أكدر أجاوب على أسئلتك، أكتبلك أكواد، وأسولف وياك بأي موضوع.\n\n"
+        "تفضل، شنو تحب تسألني اليوم؟"
+    )
+    await message.reply_text(text)
+
+@app.on_message(filters.text & ~filters.command("start"))
+async def handle_message(client, message):
+    chat_id = message.chat.id
+    
+    # التأكد من وجود جلسة للمستخدم (إذا كتب بدون ما يدوس start)
+    if chat_id not in user_sessions:
+        user_sessions[chat_id] = model.start_chat(history=[])
+        
+    chat_session = user_sessions[chat_id]
+    
+    # إظهار حالة "يكتب..." للمستخدم بالتليجرام
+    await client.send_chat_action(chat_id, ChatAction.TYPING)
+    
+    try:
+        # استخدام asyncio حتى البوت ما يعلق وينتظر الرد بسلاسة
+        response = await asyncio.to_thread(chat_session.send_message, message.text)
+        
+        # إرسال الرد للمستخدم
+        await message.reply_text(response.text)
+    except Exception as e:
+        await message.reply_text("عذراً، صار عندي ضغط أو مشكلة بالاتصال. حاول تسألني مرة ثانية! 🔄")
+        print(f"Error: {e}")
+
+if __name__ == "__main__":
+    keep_alive() # تشغيل السيرفر بالخلفية
+    print("Gemini Pyrogram Bot is starting...")
+    app.run() # تشغيل البوت
+  
